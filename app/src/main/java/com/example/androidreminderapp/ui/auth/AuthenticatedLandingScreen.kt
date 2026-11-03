@@ -5,6 +5,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -14,14 +16,18 @@ import androidx.hilt.navigation.compose.hiltViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AuthenticatedLandingScreen(
-    onLogout: () -> Unit,
+    onLogout: () -> Unit = {},
     viewModel: AuthViewModel = hiltViewModel()
 ) {
     val userDisplayInfo = viewModel.userDisplayInfo
+    val isLoading by viewModel.isLoading.collectAsState()
+    val errorMessage by viewModel.errorMessage.collectAsState()
 
     val handleLogout = {
-        viewModel.signOut()
-        onLogout()
+        if (!isLoading) {
+            viewModel.signOut()
+            onLogout()
+        }
     }
 
     Scaffold(
@@ -29,7 +35,10 @@ fun AuthenticatedLandingScreen(
             TopAppBar(
                 title = { Text("RemindMe Dashboard") },
                 actions = {
-                    TextButton(onClick = handleLogout) {
+                    TextButton(
+                        onClick = handleLogout,
+                        enabled = !isLoading
+                    ) {
                         Text("Logout", color = MaterialTheme.colorScheme.error)
                     }
                 }
@@ -44,6 +53,20 @@ fun AuthenticatedLandingScreen(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            if (errorMessage != null) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                ) {
+                    Text(
+                        text = errorMessage!!,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+
             Icon(
                 imageVector = Icons.Default.AccountCircle,
                 contentDescription = "User",
@@ -66,9 +89,14 @@ fun AuthenticatedLandingScreen(
             Button(
                 onClick = handleLogout,
                 modifier = Modifier.fillMaxWidth().height(50.dp),
+                enabled = !isLoading,
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
             ) {
-                Text("Sign Out")
+                if (isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onError)
+                } else {
+                    Text("Sign Out")
+                }
             }
         }
     }

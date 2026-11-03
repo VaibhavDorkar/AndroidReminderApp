@@ -6,6 +6,9 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -27,6 +30,17 @@ class AuthRepositoryImpl @Inject constructor(
         } catch (_: Exception) {
             null
         }
+
+    override val isUserAuthenticatedFlow: Flow<Boolean> = callbackFlow {
+        val listener = FirebaseAuth.AuthStateListener { auth ->
+            trySend(auth.currentUser != null)
+        }
+        firebaseAuth.addAuthStateListener(listener)
+        trySend(firebaseAuth.currentUser != null)
+        awaitClose {
+            firebaseAuth.removeAuthStateListener(listener)
+        }
+    }
 
     override suspend fun signInWithCredential(credential: AuthCredential): Result<Boolean> {
         return try {
@@ -53,9 +67,10 @@ class AuthRepositoryImpl @Inject constructor(
         return try {
             android.util.Log.d(TAG, "Credential Manager request started for Google Sign-In")
             val credentialManager = androidx.credentials.CredentialManager.create(activity)
+            val webClientId = activity.getString(com.example.androidreminderapp.R.string.default_web_client_id)
             val googleIdOption = com.google.android.libraries.identity.googleid.GetGoogleIdOption.Builder()
                 .setFilterByAuthorizedAccounts(false)
-                .setServerClientId("mock-server-client-id.apps.googleusercontent.com")
+                .setServerClientId(webClientId)
                 .setAutoSelectEnabled(false)
                 .build()
 
@@ -156,8 +171,9 @@ class AuthRepositoryImpl @Inject constructor(
         try {
             firebaseAuth.signOut()
             android.util.Log.d(TAG, "Logout completed")
-        } catch (_: Exception) {
-            // Fallback for offline usage
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "Logout failed: ${e.message}")
+            throw e
         }
     }
 }

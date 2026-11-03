@@ -4,9 +4,11 @@ import android.app.Activity
 import com.google.firebase.auth.AuthCredential
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.PhoneAuthProvider
+import kotlinx.coroutines.flow.Flow
 
 interface AuthRepository {
     val currentUser: FirebaseUser?
+    val isUserAuthenticatedFlow: Flow<Boolean>
     suspend fun signInWithCredential(credential: AuthCredential): Result<Boolean>
     suspend fun signInWithCustomToken(token: String): Result<Boolean>
     suspend fun signInWithGoogle(activity: Activity): Result<Boolean>

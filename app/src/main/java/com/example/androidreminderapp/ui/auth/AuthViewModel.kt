@@ -20,6 +20,12 @@ sealed interface AuthUiState {
     object AuthSuccess : AuthUiState
 }
 
+sealed interface AuthSessionState {
+    object Loading : AuthSessionState
+    object Authenticated : AuthSessionState
+    object Unauthenticated : AuthSessionState
+}
+
 @HiltViewModel
 class AuthViewModel @Inject constructor(
     private val authRepository: AuthRepository
@@ -27,6 +33,9 @@ class AuthViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow<AuthUiState>(AuthUiState.Welcome)
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
+
+    private val _sessionState = MutableStateFlow<AuthSessionState>(AuthSessionState.Loading)
+    val sessionState: StateFlow<AuthSessionState> = _sessionState.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -53,6 +62,18 @@ class AuthViewModel @Inject constructor(
             val user = authRepository.currentUser
             return user?.phoneNumber ?: user?.uid ?: "Authenticated User"
         }
+
+    init {
+        viewModelScope.launch {
+            authRepository.isUserAuthenticatedFlow.collect { isAuthenticated ->
+                if (isAuthenticated) {
+                    _sessionState.value = AuthSessionState.Authenticated
+                } else {
+                    _sessionState.value = AuthSessionState.Unauthenticated
+                }
+            }
+        }
+    }
 
     fun setAuthStep(state: AuthUiState) {
         if (isAuthCompleted && state is AuthUiState.AuthSuccess) return
@@ -148,8 +169,45 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    fun signInWithGoogle(activity: Activity, onLoginSuccess: (() -> Unit)? = null) {
+        if (isAuthCompleted) return
+        _isLoading.value = true
+        _errorMessage.value = null
+
+        viewModelScope.launch {
+            val result = authRepository.signInWithGoogle(activity)
+            _isLoading.value = false
+            result.fold(
+                onSuccess = {
+                    if (!isAuthCompleted) {
+                        isAuthCompleted = true
+                        _uiState.value = AuthUiState.AuthSuccess
+                        onLoginSuccess?.invoke()
+                    }
+                },
+                onFailure = { e ->
+                    if (!isAuthCompleted) {
+                        _errorMessage.value = e.localizedMessage ?: "Google Sign-In failed."
+                    }
+                }
+            )
+        }
+    }
+
     fun signOut() {
-        isAuthCompleted = false
-        authRepository.signOut()
+        if (_isLoading.value) return
+        _isLoading.value = true
+        _errorMessage.value = null
+
+        viewModelScope.launch {
+            try {
+                authRepository.signOut()
+                isAuthCompleted = false
+                _isLoading.value = false
+            } catch (e: Exception) {
+                _isLoading.value = false
+                _errorMessage.value = e.localizedMessage ?: "Failed to sign out. Please try again."
+            }
+        }
     }
 }

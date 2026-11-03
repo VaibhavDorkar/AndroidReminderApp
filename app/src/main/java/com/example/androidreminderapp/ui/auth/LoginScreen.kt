@@ -113,8 +113,27 @@ fun LoginScreen(
                     Spacer(modifier = Modifier.height(12.dp))
 
                     OutlinedButton(
+                        onClick = {
+                            if (activity != null) {
+                                viewModel.signInWithGoogle(activity, onLoginSuccess)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        enabled = !isLoading
+                    ) {
+                        if (isLoading) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.primary)
+                        } else {
+                            Text("Continue with Google")
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedButton(
                         onClick = { viewModel.setAuthStep(AuthUiState.SignUp) },
-                        modifier = Modifier.fillMaxWidth().height(50.dp)
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        enabled = !isLoading
                     ) {
                         Text("New user? Create Account")
                     }
@@ -123,7 +142,8 @@ fun LoginScreen(
 
                     OutlinedButton(
                         onClick = onLoginSuccess,
-                        modifier = Modifier.fillMaxWidth().height(44.dp)
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                        enabled = !isLoading
                     ) {
                         Text("Continue Offline (Guest Mode)")
                     }
@@ -184,7 +204,7 @@ fun LoginScreen(
                                 return@Button
                             }
                             if (activity != null) {
-                                viewModel.requestOtp(countryCode, phoneNumber, activity)
+                                viewModel.requestOtp(countryCode, phoneNumber, activity, onLoginSuccess)
                             }
                         },
                         modifier = Modifier.fillMaxWidth().height(50.dp),
@@ -238,7 +258,7 @@ fun LoginScreen(
                     Button(
                         onClick = {
                             if (activity != null) {
-                                viewModel.requestOtp(countryCode, phoneNumber, activity)
+                                viewModel.requestOtp(countryCode, phoneNumber, activity, onLoginSuccess)
                             }
                         },
                         modifier = Modifier.fillMaxWidth().height(50.dp),
@@ -322,7 +342,7 @@ fun LoginScreen(
                             onClick = {
                                 if (resendCountdown == 0 && activity != null) {
                                     resendCountdown = 30
-                                    viewModel.requestOtp(countryCode, phoneNumber, activity)
+                                    viewModel.requestOtp(countryCode, phoneNumber, activity, onLoginSuccess)
                                 }
                             },
                             enabled = resendCountdown == 0 && !isLoading

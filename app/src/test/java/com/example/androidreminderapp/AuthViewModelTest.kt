@@ -2,6 +2,7 @@ package com.example.androidreminderapp
 
 import android.app.Activity
 import com.example.androidreminderapp.domain.repository.AuthRepository
+import com.example.androidreminderapp.ui.auth.AuthSessionState
 import com.example.androidreminderapp.ui.auth.AuthUiState
 import com.example.androidreminderapp.ui.auth.AuthViewModel
 import com.google.firebase.auth.AuthCredential
@@ -9,6 +10,8 @@ import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.PhoneAuthProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Assert.*
@@ -114,6 +117,31 @@ class AuthViewModelTest {
     }
 
     @Test
+    fun testGoogleSignInSuccess() {
+        var successCalled = false
+        viewModel.signInWithGoogle(mockActivity()) {
+            successCalled = true
+        }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(successCalled)
+        assertEquals(AuthUiState.AuthSuccess, viewModel.uiState.value)
+        assertNull(viewModel.errorMessage.value)
+        assertFalse(viewModel.isLoading.value)
+    }
+
+    @Test
+    fun testGoogleSignInFailure() {
+        fakeRepository.shouldFailGoogleSignIn = true
+        viewModel.signInWithGoogle(mockActivity())
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNotNull(viewModel.errorMessage.value)
+        assertFalse(viewModel.isLoading.value)
+        assertNotEquals(AuthUiState.AuthSuccess, viewModel.uiState.value)
+    }
+
+    @Test
     fun testDuplicateCompletionProtection() {
         fakeRepository.triggerAutoVerification = true
         var callbackCount = 0
@@ -132,17 +160,49 @@ class AuthViewModelTest {
     }
 
     @Test
-    fun testLogoutStateTransition() {
+    fun testSessionStateRestorationAuthenticated() = runTest {
+        fakeRepository.emitAuthenticated(true)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(AuthSessionState.Authenticated, viewModel.sessionState.value)
+    }
+
+    @Test
+    fun testSessionStateUnauthenticated() = runTest {
+        fakeRepository.emitAuthenticated(false)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(AuthSessionState.Unauthenticated, viewModel.sessionState.value)
+    }
+
+    @Test
+    fun testLogoutStateTransition() = runTest {
+        fakeRepository.emitAuthenticated(true)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(AuthSessionState.Authenticated, viewModel.sessionState.value)
+
         viewModel.signOut()
-        assertNull(fakeRepository.currentUser)
+        fakeRepository.emitAuthenticated(false)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(AuthSessionState.Unauthenticated, viewModel.sessionState.value)
     }
 }
 
 class FakeAuthRepository : AuthRepository {
     var shouldFailVerification = false
     var shouldFailAutoVerification = false
+    var shouldFailGoogleSignIn = false
     var triggerAutoVerification = false
+    private val _isAuthenticated = MutableStateFlow(false)
+
     override val currentUser: FirebaseUser? = null
+
+    override val isUserAuthenticatedFlow: Flow<Boolean> = _isAuthenticated
+
+    fun emitAuthenticated(isAuthenticated: Boolean) {
+        _isAuthenticated.value = isAuthenticated
+    }
 
     override suspend fun signInWithCredential(credential: AuthCredential): Result<Boolean> {
         return if (shouldFailVerification) Result.failure(Exception("Verification failed"))
@@ -150,7 +210,11 @@ class FakeAuthRepository : AuthRepository {
     }
 
     override suspend fun signInWithCustomToken(token: String): Result<Boolean> = Result.success(true)
-    override suspend fun signInWithGoogle(activity: Activity): Result<Boolean> = Result.success(true)
+
+    override suspend fun signInWithGoogle(activity: Activity): Result<Boolean> {
+        return if (shouldFailGoogleSignIn) Result.failure(Exception("Google Sign-In failed"))
+        else Result.success(true)
+    }
 
     override suspend fun requestPhoneOtp(
         phoneNumber: String,
@@ -176,7 +240,9 @@ class FakeAuthRepository : AuthRepository {
         else Result.success(true)
     }
 
-    override fun signOut() {}
+    override fun signOut() {
+        _isAuthenticated.value = false
+    }
 }
 
 private fun mockActivity(): Activity {
